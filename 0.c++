@@ -15,7 +15,9 @@
 #include <QString>
 #include <QTimer>
 #include <QWidget>
+#include "signals.h"
 //==============================================================================
+static sigset_t sigset_req;
 static pid_t process_id;
 static volatile int shm_id = ~0;
 static char *next_commands;
@@ -24,67 +26,68 @@ static QTimer *Z_signal_I_timeout_S;
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 static QMetaObject::Connection Q_application_X_activate_S;
 static QQuickWindow *Z_gtk_Q_main_window;
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+static Z_menu_item_X_triggered_Q Z_menu_item_X_triggered_S;
+static Z_button_X_clicked_Q Z_button_X_clicked_S;
+static Z_check_button_X_clicked_Q Z_check_button_X_clicked_S;
+static Z_combo_box_X_activated_Q Z_combo_box_X_activated_S;
+static Z_text_field_X_text_changed_Q Z_text_field_X_text_changed_S;
 //==============================================================================
-static
 void
-Z_signal_I_timeout( void
-){  if( ~shm_id )
-    {   Z_signal_I_timeout_S->start(0);
+Z_signal_I_timeout(
+){  if( ~shm_id
+    || !next_commands_l
+    )
         return;
-    }
+    sigprocmask( SIG_BLOCK, 0, &sigset_req );
     shm_id = shmget( IPC_PRIVATE, next_commands_l, 0600 | IPC_CREAT | IPC_EXCL );
     if( !~shm_id )
         exit( EXIT_FAILURE );
     void *p = shmat( shm_id, 0, 0 );
     memcpy( p, next_commands, next_commands_l );
+    next_commands_l = 0;
     shmdt(p);
     free( next_commands );
     next_commands = 0;
+    sigprocmask( SIG_UNBLOCK, 0, &sigset_req );
     union sigval sv;
     sv.sival_int = shm_id;
     sigqueue( process_id, SIGUSR1, sv );
 }
-static
 void
 Z_signal_I_process_call_req_Z_void(
   char *id
 ){  size_t l_1 = strlen(id) + 1;
     size_t l = 0x1000 - 1;
-    l = ( sizeof( uint64_t ) + l_1 + sizeof( uint64_t ) + l ) & ~l;
-    char *p = ( char * )realloc( next_commands, next_commands_l + l );
+    l = ( next_commands_l + sizeof( uint64_t ) + l_1 + sizeof( uint64_t ) + l ) & ~l;
+    char *p = ( char * )realloc( next_commands, l );
     if( !p )
         exit( EXIT_FAILURE );
     next_commands = p;
     p += next_commands_l;
-    next_commands_l += l;
+    next_commands_l = l;
     *( uint64_t * )p = 2;
     strcpy( p + sizeof( uint64_t ), id );
     *( uint64_t * )( p + sizeof( uint64_t ) + l_1 ) = 0;
-    if( !Z_signal_I_timeout_S->isActive() )
-        Z_signal_I_timeout_S->start(0);
 }
-static
 void
 Z_signal_I_process_call_req_Z_unsigned(
   char *id
 , unsigned v
 ){  size_t l_1 = strlen(id) + 1;
     size_t l = 0x1000 - 1;
-    l = ( sizeof( uint64_t ) + l_1 + sizeof(unsigned) + sizeof( uint64_t ) + l ) & ~l;
-    char *p = ( char * )realloc( next_commands, next_commands_l + l );
+    l = ( next_commands_l + sizeof( uint64_t ) + l_1 + sizeof(unsigned) + sizeof( uint64_t ) + l ) & ~l;
+    char *p = ( char * )realloc( next_commands, l );
     if( !p )
         exit( EXIT_FAILURE );
     next_commands = p;
     p += next_commands_l;
-    next_commands_l += l;
+    next_commands_l = l;
     *( uint64_t * )p = 2;
     strcpy( p + sizeof( uint64_t ), id );
     *( unsigned * )( p + sizeof( uint64_t ) + l_1 ) = v;
     *( uint64_t * )( p + sizeof( uint64_t ) + l_1 + sizeof(unsigned) ) = 0;
-    if( !Z_signal_I_timeout_S->isActive() )
-        Z_signal_I_timeout_S->start(0);
 }
-static
 void
 Z_signal_I_process_call_req_Z_string(
   char *id
@@ -92,63 +95,48 @@ Z_signal_I_process_call_req_Z_string(
 ){  size_t l_1 = strlen(id) + 1;
     size_t l_2 = strlen(s) + 1;
     size_t l = 0x1000 - 1;
-    l = ( sizeof( uint64_t ) + l_1 + l_2 + sizeof( uint64_t ) + l ) & ~l;
-    char *p = ( char * )realloc( next_commands, next_commands_l + l );
+    l = ( next_commands_l + sizeof( uint64_t ) + l_1 + l_2 + sizeof( uint64_t ) + l ) & ~l;
+    char *p = ( char * )realloc( next_commands, l );
     if( !p )
         exit( EXIT_FAILURE );
     next_commands = p;
     p += next_commands_l;
-    next_commands_l += l;
+    next_commands_l = l;
     *( uint64_t * )p = 2;
     strcpy( p + sizeof( uint64_t ), id );
     strcpy( p + sizeof( uint64_t ) + l_1, s );
     *( uint64_t * )( p + sizeof( uint64_t ) + l_1 + l_2 ) = 0;
-    if( !Z_signal_I_timeout_S->isActive() )
-        Z_signal_I_timeout_S->start(0);
 }
-/*static
 void
-Z_action_X_activate( GSimpleAction *action
-, GVariant *parameter
-, void *data
-){  Z_signal_I_process_call_req_Z_void( gtk_buildable_get_buildable_id(( void *)action ));
+Z_menu_item_X_triggered_Q::handle(
+){  QQuickItem* widget = qobject_cast<QQuickItem*>( sender() );
+    Z_signal_I_process_call_req_Z_void( widget->objectName().toUtf8().data() );
 }
-static
 void
-Z_button_X_clicked( GtkButton *button
-, void *data
-){  Z_signal_I_process_call_req_Z_void( gtk_buildable_get_buildable_id(( void *)button ));
+Z_button_X_clicked_Q::handle(
+){  QQuickItem* widget = qobject_cast<QQuickItem*>( sender() );
+    for( auto widget_ : widget->findChildren<QQuickItem*>() )
+        if( widget_->inherits( "QQuickPopupItem" ))
+        {   widget_->setProperty( "visible", !widget_->property( "visible" ).toBool() );
+            return;
+        }
+    Z_signal_I_process_call_req_Z_void( widget->objectName().toUtf8().data() );
 }
-static
 void
-Z_checkbutton_X_toggled( GtkCheckButton *checkbutton
-, void *data
-){  Z_signal_I_process_call_req_Z_void( gtk_buildable_get_buildable_id(( void *)checkbutton ));
+Z_check_button_X_clicked_Q::handle(
+){  QQuickItem* widget = qobject_cast<QQuickItem*>( sender() );
+    Z_signal_I_process_call_req_Z_void( widget->objectName().toUtf8().data() );
 }
-static
 void
-Z_dropdown_X_selected( GtkDropDown *dropdown
-, GParamSpec *parameter
-, void *data
-){  Z_signal_I_process_call_req_Z_unsigned( gtk_buildable_get_buildable_id(( void *)dropdown ), gtk_drop_down_get_selected(dropdown) );
+Z_combo_box_X_activated_Q::handle(
+){  QQuickItem* widget = qobject_cast<QQuickItem*>( sender() );
+    Z_signal_I_process_call_req_Z_unsigned( widget->objectName().toUtf8().data(), static_cast<unsigned>( widget->property( "currentIndex" ).toInt() ));
 }
-static
-gboolean
-Z_entry_X_changed_I_timeout( void *data
-){  GtkEntry *entry = data;
-    GtkEntryBuffer *buffer = gtk_entry_get_buffer(entry);
-    Z_signal_I_process_call_req_Z_string( gtk_buildable_get_buildable_id(data), gtk_entry_buffer_get_text(buffer) );
-    Z_entry_X_changed_I_timeout_S = 0;
-    return G_SOURCE_REMOVE;
-}
-static
 void
-Z_entry_X_changed( GtkEntry *entry
-, void *data
-){  if( Z_entry_X_changed_I_timeout_S )
-        g_source_remove( Z_entry_X_changed_I_timeout_S );
-    Z_entry_X_changed_I_timeout_S = g_timeout_add( 183, Z_entry_X_changed_I_timeout, entry );
-}*/
+Z_text_field_X_text_changed_Q::handle(
+){  QQuickItem* widget = qobject_cast<QQuickItem*>( sender() );
+    Z_signal_I_process_call_req_Z_string( widget->objectName().toUtf8().data(), widget->property( "text" ).toString().toUtf8().data() );
+}
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 static
 void
@@ -194,15 +182,15 @@ Z_signal_V_process_call_req( int uid
                     QQuickWindow* window = qobject_cast<QQuickWindow*>( component.create() );
                     for( auto widget : window->findChildren<QQuickItem*>() )
                     {   if( widget->inherits( "QQuickButton" ))
-                            ;
+                            QObject::connect( widget, SIGNAL( clicked() ), &Z_button_X_clicked_S, SLOT( handle() ));
                         else if( widget->inherits( "QQuickCheckButton" ))
-                            ;
+                            QObject::connect( widget, SIGNAL( clicked() ), &Z_check_button_X_clicked_S, SLOT( handle() ));
                         else if( widget->inherits( "QQuickComboBox" ))
-                            ;
+                            QObject::connect( widget, SIGNAL( activated(int) ), &Z_combo_box_X_activated_S, SLOT( handle() ));
                         else if( widget->inherits( "QQuickTextField" ))
-                            ;
-                        else if( widget->inherits( "QQuickMenu" ))
-                            ;
+                            QObject::connect( widget, SIGNAL( textChanged() ), &Z_text_field_X_text_changed_S, SLOT( handle() ));
+                        else if( widget->inherits( "QQuickMenuItem" ))
+                            QObject::connect( widget, SIGNAL( triggered() ), &Z_menu_item_X_triggered_S, SLOT( handle() ));
                     }
                     window->show();
                 }
@@ -221,7 +209,7 @@ Z_signal_V_process_call_req( int uid
                             widget->property( "text" ) = s;
                             p += strlen(p) + 1;
                         }else if( widget->inherits( "QQuickProgressBar" ))
-                        {   widget->setProperty( "value", *( double * )p );
+                        {   widget->setProperty( "value", *reinterpret_cast<double *>(p) );
                             p += sizeof(double);
                         }else if( widget->inherits( "QQuickBusyIndicator" ))
                         {   widget->property( "running" ) = !widget->property( "running" ).toBool();
@@ -255,7 +243,7 @@ Z_signal_V_process_call_reply( int uid
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 static
 void
-Q_application_X_activate( void
+Q_application_X_activate(
 ){  size_t l = 0x1000 - 1;
     l = ( 2 * sizeof( uint64_t ) + l ) & ~l;
     shm_id = shmget( IPC_PRIVATE, l, 0600 | IPC_CREAT | IPC_EXCL );
@@ -281,9 +269,12 @@ main( int argc
     sa.sa_flags = 0;
     sa.sa_handler = SIG_IGN;
     sigaction( SIGVTALRM, &sa, 0 );
+    sigemptyset( &sigset_req );
+    sigaddset( &sigset_req, SIGUSR1 );
     process_id = getppid();
     QApplication app( argc, argv );
     Z_signal_I_timeout_S = new QTimer();
+    Z_signal_I_timeout_S->start(183);
     QObject::connect( Z_signal_I_timeout_S, &QTimer::timeout, &Z_signal_I_timeout );
     QQmlEngine engine;
     QQmlComponent component( &engine );
