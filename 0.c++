@@ -60,7 +60,7 @@ Z_signal_I_process_call_req_Z_void(
 ){  size_t l_1 = strlen(id) + 1;
     size_t l = 0x1000 - 1;
     l = ( next_commands_l + sizeof( uint64_t ) + l_1 + sizeof( uint64_t ) + l ) & ~l;
-    char *p = ( char * )realloc( next_commands, l );
+    char *p = static_cast<char*>( realloc( next_commands, l ));
     if( !p )
         exit( EXIT_FAILURE );
     next_commands = p;
@@ -77,7 +77,7 @@ Z_signal_I_process_call_req_Z_unsigned(
 ){  size_t l_1 = strlen(id) + 1;
     size_t l = 0x1000 - 1;
     l = ( next_commands_l + sizeof( uint64_t ) + l_1 + sizeof(unsigned) + sizeof( uint64_t ) + l ) & ~l;
-    char *p = ( char * )realloc( next_commands, l );
+    char *p = static_cast<char*>( realloc( next_commands, l ));
     if( !p )
         exit( EXIT_FAILURE );
     next_commands = p;
@@ -96,7 +96,7 @@ Z_signal_I_process_call_req_Z_string(
     size_t l_2 = strlen(s) + 1;
     size_t l = 0x1000 - 1;
     l = ( next_commands_l + sizeof( uint64_t ) + l_1 + l_2 + sizeof( uint64_t ) + l ) & ~l;
-    char *p = ( char * )realloc( next_commands, l );
+    char *p = static_cast<char*>( realloc( next_commands, l ));
     if( !p )
         exit( EXIT_FAILURE );
     next_commands = p;
@@ -279,8 +279,8 @@ main( int argc
     QQmlEngine engine;
     QQmlComponent component( &engine );
     QString s = R"(
-import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 ApplicationWindow{visible:true}
     )";
     component.setData( s.toUtf8(), QUrl() );
